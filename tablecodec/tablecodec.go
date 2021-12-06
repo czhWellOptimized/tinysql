@@ -72,6 +72,16 @@ func EncodeRowKeyWithHandle(tableID int64, handle int64) kv.Key {
 // DecodeRecordKey decodes the key and gets the tableID, handle.
 func DecodeRecordKey(key kv.Key) (tableID int64, handle int64, err error) {
 	/* Your code here */
+	tableID = DecodeTableID(key)
+	// has no tableprefix
+	if tableID == 0 {
+		err = errInvalidKey.GenWithStack("invalid key - %q", key)
+		return
+	}
+	handle, err = DecodeRowKey(key)
+	if err != nil {
+		return
+	}
 	return
 }
 
@@ -95,6 +105,19 @@ func EncodeIndexSeekKey(tableID int64, idxID int64, encodedValue []byte) kv.Key 
 // DecodeIndexKeyPrefix decodes the key and gets the tableID, indexID, indexValues.
 func DecodeIndexKeyPrefix(key kv.Key) (tableID int64, indexID int64, indexValues []byte, err error) {
 	/* Your code here */
+	k := key
+
+	tableID, indexID, isRecord, err := DecodeKeyHead(key)
+	if err != nil {
+		return 0, 0, nil, errors.Trace(err)
+	}
+	if isRecord {
+		err = errInvalidIndexKey.GenWithStack("invalid index key - %q", k)
+		return 0, 0, nil, err
+	}
+	//1_8_2_8(indexID)_indexColumnsValue
+	indexValues = key[prefixLen+idLen:]
+
 	return tableID, indexID, indexValues, nil
 }
 
@@ -110,6 +133,7 @@ func DecodeIndexKey(key kv.Key) (tableID int64, indexID int64, indexValues []str
 		err = errInvalidIndexKey.GenWithStack("invalid index key - %q", k)
 		return 0, 0, nil, err
 	}
+	//1_8_2_8(indexID)_indexColumnsValue
 	indexKey := key[prefixLen+idLen:]
 	indexValues, err = DecodeValuesBytesToStrings(indexKey)
 	if err != nil {
@@ -138,7 +162,6 @@ func DecodeValuesBytesToStrings(b []byte) ([]string, error) {
 	}
 	return datumValues, nil
 }
-
 
 // EncodeRow encode row data and column ids into a slice of byte.
 // Row layout: colID1, value1, colID2, value2, .....
